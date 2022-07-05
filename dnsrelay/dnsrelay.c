@@ -8,8 +8,8 @@
 #include"DomainList.h"
 #pragma comment(lib,"Ws2_32.lib")
 #pragma comment(lib, "pthreadVC2.lib")
+
 #define VERSION 1.60
-#define BUILD_TIME "April 28 2022 21:28:00"
 #define MESSAGE_MAX_LENGTH 512  //报文最大长度
 #define MAX_PHREAD 100   //线程最大数量
 #define SLEEP_INTERVAL 100//周期性判断是否超时间隔
@@ -49,63 +49,36 @@ pthread_mutex_t modifyMessageNum;
 
 int debugLevel = 2;
 char* dnsIp = "218.85.157.99";
-char* fileName = "D:\\Documents\\桌面\\计算机网络实验\\计算机网络课程设计资料\\dnsrelay.txt";
+char* staticDataPath = ".//dnsrelay.txt";
 int len = sizeof(SOCKADDR);
-int totalQueryNum = 0;
+int queryNum = 0;
 int messageNum = 0;
 
+void initDnsrelay(int argc, char* argv[]);//处理命令行参数
+void initSocket();//初始化SOCKET
+void* cacheRefresh(void* arg);//刷新动态记录
+void* recvFromServer(void* arg);//接受dns服务器数据
+void* recvFromClient(void* arg);//接受客户端数据
+void* processResponse(void* arg);//处理dns服务器数据
+void* processQuery(void* arg);  //处理客户端数据
 void outputRecvInfo(const char* recvIp, const int recvPort, const Str* pOriginMessage);
 void outputSimpleInfo(const char* recvIp, const int isStatic, const Str* domainName, const int type);
 void outputSendInfo(const char* sendIp, const int sendPort, const Str* pNewMessage, const int oldId, const int isAddAnswer);
-void initDnsrelay(int argc, char* argv[]);
-void* cacheRefreshing(void* arg);
-void* serverWorking(void* arg);
-void* clientWorking(void* arg);
-void* processResponse(void* arg);
-void* processQuery(void* arg);
 
 int main(int argc, char* argv[])
 {
     initDnsrelay(argc, argv);//处理命令行参数
-    printf("DNSRELAY, Version %.2f, Build: %s\n",VERSION,BUILD_TIME);
+    printf("DNSRELAY, Version %.2f, Build: " __DATE__ "  "__TIME__"\n", VERSION);
     printf("Usage: dnsrelay [-d | -dd] [<dns-server>] [<db-file>]\n\n");
     printf("Name server %s:53.\n", dnsIp);
     printf("Debug level %d.\n", debugLevel);
     printf("Bind UDP port 53");
 
-    //初始化套接字库
-    WORD wVersionRequested;
-    WSADATA wsaData;
-    wVersionRequested = MAKEWORD(2, 2);
-    int err = WSAStartup(wVersionRequested, &wsaData);
-    if (err != 0) {
-        printf("...WSAStartup failed");
-        exit(-1);
-    }
-
-    // 绑定本地信息
-    serverSocket = socket(AF_INET, SOCK_DGRAM, 0);
-    memset(&localAdd, 0, sizeof(SOCKADDR_IN));
-    localAdd.sin_addr.S_un.S_addr = inet_addr("127.0.0.1");
-    localAdd.sin_family = AF_INET;
-    localAdd.sin_port = htons(53);
-    err = bind(serverSocket, (SOCKADDR*)&localAdd, sizeof(SOCKADDR));
-
-    //dns服务器信息
-    clientSocket = socket(AF_INET, SOCK_DGRAM, 0);
-    memset(&dnsAdd, 0, sizeof(SOCKADDR_IN));
-    dnsAdd.sin_addr.S_un.S_addr = inet_addr(dnsIp);
-    dnsAdd.sin_family = AF_INET;
-    dnsAdd.sin_port = htons(53);
-    if (err != 0) {
-        printf("...bind failed");
-        exit(-1);
-    }
-    printf("...OK\n");
+    initSocket();//初始化SOCKET
 
     //载入域名表
     initDomainList(&domainList, CACHE_CAPACITY);
-    loadDomainList(&domainList, fileName, debugLevel);
+    loadDomainList(&domainList, staticDataPath, debugLevel);
 
     //clients初始化
     int i = 0;
@@ -130,9 +103,9 @@ int main(int argc, char* argv[])
     pthread_mutex_init(&modifyTotalQueryNum, NULL);
     pthread_mutex_init(&output, NULL);
 
-    pthread_create(&refreshCache, NULL, cacheRefreshing, NULL);//刷新动态记录进程
-    pthread_create(&client, NULL, clientWorking, NULL);//处理客户端数据进程
-    pthread_create(&server, NULL, serverWorking, NULL);//处理服务器数据进程
+    pthread_create(&refreshCache, NULL, cacheRefresh, NULL);//刷新动态记录进程
+    pthread_create(&client, NULL, recvFromClient, NULL);//处理客户端数据进程
+    pthread_create(&server, NULL, recvFromServer, NULL);//处理服务器数据进程
 
     pthread_join(refreshCache, NULL);
     pthread_join(client, NULL);
@@ -151,8 +124,8 @@ int main(int argc, char* argv[])
     return 0;
 }
 
+//处理命令行参数
 void initDnsrelay(int argc, char* argv[]) {
-    //处理命令行参数
     int n[4];
     if (argc >= 2) {
         if (strcmp(argv[1], "-d") == 0) {
@@ -165,7 +138,7 @@ void initDnsrelay(int argc, char* argv[]) {
                     exit(0);
                 }
                 if (argc >= 4)
-                    fileName = argv[3];
+                    staticDataPath = argv[3];
             }
         }
         else if (strcmp(argv[1], "-dd") == 0) {
@@ -178,7 +151,7 @@ void initDnsrelay(int argc, char* argv[]) {
                     exit(0);
                 }
                 if (argc >= 4)
-                    fileName = argv[3];
+                    staticDataPath = argv[3];
             }
         }
         else {
@@ -189,14 +162,47 @@ void initDnsrelay(int argc, char* argv[]) {
                 exit(0);
             }
             if (argc >= 3)
-                fileName = argv[2];
+                staticDataPath = argv[2];
         }
     }
 }
 
-void* cacheRefreshing(void* arg)
+//初始化SOCKET
+void initSocket() {
+    //初始化套接字库
+    WORD wVersionRequested;
+    WSADATA wsaData;
+    wVersionRequested = MAKEWORD(2, 2);
+    if (WSAStartup(wVersionRequested, &wsaData) != 0) {
+        printf("...WSAStartup failed");
+        exit(-1);
+    }
+
+    // 绑定本地信息
+    serverSocket = socket(AF_INET, SOCK_DGRAM, 0);
+    memset(&localAdd, 0, sizeof(SOCKADDR_IN));
+    localAdd.sin_addr.S_un.S_addr = inet_addr("127.0.0.1");
+    localAdd.sin_family = AF_INET;
+    localAdd.sin_port = htons(53);
+    if (bind(serverSocket, (SOCKADDR*)&localAdd, sizeof(SOCKADDR)) != 0) {
+        printf("...bind failed");
+        exit(-1);
+    }
+    printf("...OK\n");
+
+    //dns服务器信息
+    clientSocket = socket(AF_INET, SOCK_DGRAM, 0);
+    memset(&dnsAdd, 0, sizeof(SOCKADDR_IN));
+    dnsAdd.sin_addr.S_un.S_addr = inet_addr(dnsIp);
+    dnsAdd.sin_family = AF_INET;
+    dnsAdd.sin_port = htons(53);
+
+}
+
+
+//刷新动态记录
+void* cacheRefresh(void* arg)
 {
-    //刷新动态记录
     while (1) {
         Sleep(REFRESH_TIME);
         pthread_mutex_lock(&output);
@@ -209,18 +215,15 @@ void* cacheRefreshing(void* arg)
     }
 }
 
-void* clientWorking(void* arg)
+
+//接受客户端数据
+void* recvFromClient(void* arg)
 {
     while (1) {
-        //接受客户端数据
-        char string[MESSAGE_MAX_LENGTH + 1];
+        char string[MESSAGE_MAX_LENGTH];
         struct sockaddr_in sockaddr;
         int length = recvfrom(serverSocket, string, MESSAGE_MAX_LENGTH, 0, (SOCKADDR*)&sockaddr, &len);
         if (length > 16) {
-            Str temp;
-            initStr(&temp);
-            setStr(&temp, string, length);
-
             //等待可使用Client的线程
             struct Client* pClient = NULL;
             for (int i = 0; i < MAX_PHREAD / 2; i++) {
@@ -234,15 +237,14 @@ void* clientWorking(void* arg)
                     i = 0;
                 }
             }
-            copyStr(&pClient->query,& temp);
+            setStr(&pClient->query, string, length);
             pClient->clientAdd = sockaddr;
 
             //创建新线程处理query
             pthread_create(&(pClient->tid), NULL, processQuery, pClient);
             pthread_detach(pClient->tid);
-            deleteStr(&temp);
         }
-        else if(length == -1) {
+        else {
             pthread_mutex_lock(&output);
             printf("recvfrom() Error #%d\n", GetLastError());
             pthread_mutex_unlock(&output);
@@ -251,27 +253,23 @@ void* clientWorking(void* arg)
     return NULL;
 }
 
-void* serverWorking(void* arg)
+//接受dns服务器数据
+void* recvFromServer(void* arg)
 {
     while (1) {
-
         //等待hasMessageToReceive信号
         pthread_mutex_lock(&modifyMessageNum);
         while (messageNum == 0)
             pthread_cond_wait(&hasMessageToReceive, &modifyMessageNum);//等待接受数据请求
         pthread_mutex_unlock(&modifyMessageNum);
 
-        //接受服务器数据
-        char string[MESSAGE_MAX_LENGTH + 1];
+        char string[MESSAGE_MAX_LENGTH];
         struct sockaddr_in sockaddr;
         int length = recvfrom(clientSocket, string, MESSAGE_MAX_LENGTH, 0, (SOCKADDR*)&sockaddr, &len);
         if (length > 16) {
             pthread_mutex_lock(&modifyMessageNum);
             messageNum--;
             pthread_mutex_unlock(&modifyMessageNum);
-            Str temp;
-            initStr(&temp);
-            setStr(&temp, string, length);
 
             //等待可使用的Server线程
             struct Server* pServer = NULL;
@@ -286,14 +284,13 @@ void* serverWorking(void* arg)
                     i = 0;
                 }
             }
-            copyStr(&pServer->response,& temp);
+            setStr(&pServer->response, string, length);
 
             //创建新线程处理response
             pthread_create(&(pServer->tid), NULL, processResponse, pServer);
             pthread_detach(pServer->tid);
-            deleteStr(&temp);
         }
-        else if(length == -1) {
+        else {
             pthread_mutex_lock(&output);
             printf("recvfrom() Error #%d\n", GetLastError());
             pthread_mutex_unlock(&output);
@@ -301,27 +298,31 @@ void* serverWorking(void* arg)
     }
 }
 
+//处理dns服务器数据
 void* processResponse(void* arg) {
-    //处理dns服务器数据
     struct Server* pServer = (struct Server*)arg;
-    pthread_mutex_lock(&output);
 
-    //输出调试信息
+    pthread_mutex_lock(&output);
     outputRecvInfo(dnsIp, 53, &pServer->response);
+    pthread_mutex_unlock(&output);
+
     short id = getId(&pServer->response);//获取id，依据id确定客户
     setId(&pServer->response, clients[id].originId);//修改为原始id
     char ip[20];
     inet_ntop(AF_INET, (void*)&clients[id].clientAdd, ip, 16);
-    outputSendInfo(ip, ntohs(clients[id].clientAdd.sin_port), &pServer->response,id, 0);
+
+    pthread_mutex_lock(&output);
+    outputSendInfo(ip, ntohs(clients[id].clientAdd.sin_port), &pServer->response, id, 0);
     pthread_mutex_unlock(&output);
 
-    int length = sendto(serverSocket, pServer->response.string, strLength(&pServer->response), 0, (SOCKADDR*)&clients[id].clientAdd, sizeof(SOCKADDR_IN)); 
+    int length = sendto(serverSocket, pServer->response.string, strLength(&pServer->response), 0, (SOCKADDR*)&clients[id].clientAdd, sizeof(SOCKADDR_IN));
     if (length == -1) {
         pthread_mutex_lock(&output);
         printf("sendto() Error #%d\n", GetLastError());
         pthread_mutex_unlock(&output);
+
         clients[id].isOccupied = UNOCCUPIED;//解除client线程使用权限
-        pServer->isOccupied = UNOCCUPIED;
+        pServer->isOccupied = UNOCCUPIED;//解除server线程使用权限
         return NULL;
     }
     clients[id].isOccupied = UNOCCUPIED;//解除client线程使用权限
@@ -329,20 +330,23 @@ void* processResponse(void* arg) {
     //保存记录
     Domain domain;
     initDomain(&domain);
-    int isNeededToSave = saveRdata(&domain,& pServer->response);//仅保存RDATA字段
+    int isNeededToSave = saveRdata(&domain, &pServer->response);//仅保存RDATA字段
+
     pthread_mutex_lock(&modifyCache);
     if (isNeededToSave == 1 && addDomain(&domainList, &domain) == 0) {
         Domain* pDomain = findDomain(&domainList, &domain.name);
-        saveRdata(pDomain,& pServer->response);
+        saveRdata(pDomain, &pServer->response);
     }
     pthread_mutex_unlock(&modifyCache);
+
     pServer->isOccupied = UNOCCUPIED;// 解除server线程使用权限
     deleteDomain(&domain);
     return NULL;
 }
 
+
+//处理客户端数据
 void* processQuery(void* arg) {
-    //处理客户端数据
     struct Client* pClient = (struct Client*)arg;
     Str domainName;
     initStr(&domainName);
@@ -350,14 +354,16 @@ void* processQuery(void* arg) {
     char ip[20];
     inet_ntop(AF_INET, (void*)&pClient->clientAdd, ip, 16);
 
-    if ((type = getQnameAndType(&domainName,& pClient->query)) == 0) {
+    if ((type = getQnameAndType(&domainName, &pClient->query)) == 0) {
         //无法获得域名
-
-        //输出调试信息
         pthread_mutex_lock(&output);
         outputRecvInfo(ip, ntohs(pClient->clientAdd.sin_port), &pClient->query);
+        pthread_mutex_unlock(&output);
+
         setQr(&pClient->query, 1);//QR置1
         setRcode(&pClient->query, 1);//返回FOEMAT ERROR
+
+        pthread_mutex_lock(&output);
         outputSendInfo(ip, ntohs(pClient->clientAdd.sin_port), &pClient->query, -1, 0);
         pthread_mutex_unlock(&output);
 
@@ -376,7 +382,7 @@ void* processQuery(void* arg) {
     pthread_mutex_lock(&modifyCache);
     Domain* pDomain = findDomain(&domainList, &domainName);
     pthread_mutex_unlock(&modifyCache);
-    
+
     if (pDomain) {
         //在本地库找到域名
         if (pDomain->isAvailable == 0) {
@@ -417,7 +423,7 @@ void* processQuery(void* arg) {
                 outputSendInfo(ip, ntohs(pClient->clientAdd.sin_port), &pClient->query, -1, 1);
                 pthread_mutex_unlock(&output);
 
-                int length = sendto(serverSocket, pClient->query.string, strLength(&pClient->query) , 0, (SOCKADDR*)&pClient->clientAdd, sizeof(SOCKADDR_IN));
+                int length = sendto(serverSocket, pClient->query.string, strLength(&pClient->query), 0, (SOCKADDR*)&pClient->clientAdd, sizeof(SOCKADDR_IN));
                 if (length == -1) {
                     pthread_mutex_lock(&output);
                     printf("sendto() Error #%d\n", GetLastError());
@@ -464,7 +470,7 @@ void* processQuery(void* arg) {
     pClient->originId = getId(&pClient->query);//保存原始id
     setId(&pClient->query, pClient->id);//修改为新id
     outputSimpleInfo(ip, 0, &domainName, type);
-    outputSendInfo(dnsIp,53, &pClient->query, pClient->originId, 0);
+    outputSendInfo(dnsIp, 53, &pClient->query, pClient->originId, 0);
     pthread_mutex_unlock(&output);
 
     int length = sendto(clientSocket, pClient->query.string, strLength(&pClient->query), 0, (SOCKADDR*)&dnsAdd, sizeof(SOCKADDR_IN));
@@ -521,10 +527,10 @@ void outputSimpleInfo(const char* recvIp, const int isStatic, const Str* domainN
         struct tm* now;
         now = gmtime(&timep);
         if (isStatic && type == 1) {
-            printf("%8d:* ", totalQueryNum);
+            printf("%8d:* ", queryNum);
         }
         else {
-            printf("%8d:  ", totalQueryNum);
+            printf("%8d:  ", queryNum);
         }
         printf("%d-%02d-%02d %02d:%02d:%02d  ", 1900 + now->tm_year, 1 + now->tm_mon, now->tm_mday, 8 + now->tm_hour, now->tm_min, now->tm_sec);
 
@@ -536,12 +542,12 @@ void outputSimpleInfo(const char* recvIp, const int isStatic, const Str* domainN
             printf("%.*s\n", domainName->length, domainName->string);
         }
         pthread_mutex_lock(&modifyTotalQueryNum);
-        totalQueryNum++;
+        queryNum++;
         pthread_mutex_unlock(&modifyTotalQueryNum);
     }
 }
 
-void outputSendInfo(const char* sendIp, const int sendPort, const Str* pNewMessage, const int oldId, const int isAddAnswer){
+void outputSendInfo(const char* sendIp, const int sendPort, const Str* pNewMessage, const int oldId, const int isAddAnswer) {
     //输出发送数据信息
     if (debugLevel == 2) {
         if (isAddAnswer || oldId == -1) {

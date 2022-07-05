@@ -16,20 +16,20 @@
     <Filter Include="源文件\message">
       <UniqueIdentifier>{e86269b5-a62e-4e31-850d-8cc1fe838f3c}</UniqueIdentifier>
     </Filter>
-    <Filter Include="源文件\domain_list">
-      <UniqueIdentifier>{99d25c7f-e686-4e23-a104-4335df5d1be3}</UniqueIdentifier>
-    </Filter>
     <Filter Include="源文件\util">
       <UniqueIdentifier>{8c466118-0bff-494a-b6b7-796fa1125752}</UniqueIdentifier>
     </Filter>
     <Filter Include="头文件\message">
       <UniqueIdentifier>{5a928577-8101-40cf-9b6e-6b14e4c3b7fb}</UniqueIdentifier>
     </Filter>
-    <Filter Include="头文件\domain_list">
-      <UniqueIdentifier>{5b4426ac-8f7d-491f-bd40-f6cbeae75235}</UniqueIdentifier>
-    </Filter>
     <Filter Include="头文件\util">
       <UniqueIdentifier>{d1b28bf0-9cf4-40fc-909a-c18dede57556}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\domain">
+      <UniqueIdentifier>{5b4426ac-8f7d-491f-bd40-f6cbeae75235}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="源文件\domain">
+      <UniqueIdentifier>{99d25c7f-e686-4e23-a104-4335df5d1be3}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -40,13 +40,10 @@
       <Filter>源文件\message</Filter>
     </ClCompile>
     <ClCompile Include="Domain.c">
-      <Filter>源文件\domain_list</Filter>
+      <Filter>源文件\domain</Filter>
     </ClCompile>
     <ClCompile Include="DomainList.c">
-      <Filter>源文件\domain_list</Filter>
-    </ClCompile>
-    <ClCompile Include="LRUCache.c">
-      <Filter>源文件\util</Filter>
+      <Filter>源文件\domain</Filter>
     </ClCompile>
     <ClCompile Include="Str.c">
       <Filter>源文件\util</Filter>
@@ -60,13 +57,10 @@
       <Filter>头文件\message</Filter>
     </ClInclude>
     <ClInclude Include="Domain.h">
-      <Filter>头文件\domain_list</Filter>
+      <Filter>头文件\domain</Filter>
     </ClInclude>
     <ClInclude Include="DomainList.h">
-      <Filter>头文件\domain_list</Filter>
-    </ClInclude>
-    <ClInclude Include="LRUCache.h">
-      <Filter>头文件\util</Filter>
+      <Filter>头文件\domain</Filter>
     </ClInclude>
     <ClInclude Include="Str.h">
       <Filter>头文件\util</Filter>

@@ -1,5 +1,21 @@
 #include"Domain.h"
 
+void initDomain(Domain* pDomain)
+{
+	initStr(&pDomain->name);
+	pDomain->isStatic = 0;
+	pDomain->isAvailable = 1;
+	pDomain->numA = -1;
+	pDomain->num4A = -1;
+	pDomain->pRdataA = NULL;
+	pDomain->pRdata4A = NULL;
+}
+
+void setDomainName(Domain* pDomain, const Str* pName)
+{
+	copyStr(&(pDomain->name), pName);
+}
+
 void copyDomain(Domain* pDomain1, const Domain* pDomain2) {
 	deleteDomain(pDomain1);
 	pDomain1->isStatic = pDomain2->isStatic;
@@ -32,6 +48,36 @@ void copyDomain(Domain* pDomain1, const Domain* pDomain2) {
 	for (int i = 0; i < pDomain1->num4A; i++) {
 		initStr(&pDomain1->pRdata4A[i]);
 		copyStr(&pDomain1->pRdata4A[i], &pDomain2->pRdata4A[i]);
+	}
+}
+
+void addRecord(Domain* pDomain, const Str* pRdata, const int type)
+{
+	if (type == 1) {
+		//添加A类型记录
+		if (pDomain->numA == 127)
+			return;
+		pDomain->pRdataA = (Str*)realloc(pDomain->pRdataA, sizeof(Str) * (pDomain->numA + 1));
+		if (pDomain->pRdataA == NULL) {
+			printf("Request memory failed\n");
+			exit(-1);
+		}
+		initStr(&pDomain->pRdataA[pDomain->numA]);
+		copyStr(&pDomain->pRdataA[pDomain->numA], pRdata);
+		pDomain->numA++;
+	}
+	else if (type == 28) {
+		//添加AA类型记录
+		if (pDomain->num4A == 127)
+			return;
+		pDomain->pRdata4A = (Str*)realloc(pDomain->pRdata4A, sizeof(Str) * (pDomain->num4A + 1));
+		if (pDomain->pRdata4A == NULL) {
+			printf("Request memory failed\n");
+			exit(-1);
+		}
+		initStr(&pDomain->pRdata4A[pDomain->num4A]);
+		copyStr(&pDomain->pRdata4A[pDomain->num4A], pRdata);
+		pDomain->num4A++;
 	}
 }
 
