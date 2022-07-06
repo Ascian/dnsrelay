@@ -309,7 +309,7 @@ void* processResponse(void* arg) {
     short id = getId(&pServer->response);//获取id，依据id确定客户
     setId(&pServer->response, clients[id].originId);//修改为原始id
     char ip[20];
-    inet_ntop(AF_INET, (void*)&clients[id].clientAdd, ip, 16);
+    inet_ntop(AF_INET, (void*)&clients[id].clientAdd.sin_addr, ip, 16);
 
     pthread_mutex_lock(&output);
     outputSendInfo(ip, ntohs(clients[id].clientAdd.sin_port), &pServer->response, id, 0);
@@ -352,7 +352,7 @@ void* processQuery(void* arg) {
     initStr(&domainName);
     int type;
     char ip[20];
-    inet_ntop(AF_INET, (void*)&pClient->clientAdd, ip, 16);
+    inet_ntop(AF_INET, (void*)&pClient->clientAdd.sin_addr, ip, 16);
 
     pthread_mutex_lock(&output);
     outputRecvInfo(ip, ntohs(pClient->clientAdd.sin_port), &pClient->query);
