@@ -7,18 +7,13 @@ typedef struct Str {
 }Str;
 
 //³õÊ¼»¯×Ö·û´®
-inline void initStr(Str* str) {
-	str->length = 0;
-	str->string = NULL;
-}
+void initStr(Str* str);
 
 //ÉèÖÃ×Ö·û´®
 void setStr(Str* dst, const char* src, const unsigned short length);
 
 //·µ»Ø×Ö·û´®³¤¶È
-inline int strLength(const Str* str) {
-	return str->length;
-}
+int strLength(const Str* str);
 
 //¶ÁÈ¡×Ó´®
 void getSubstring(Str* dst, const Str* src, const unsigned short add, const unsigned short length);
@@ -42,9 +37,5 @@ void appendStr(Str* dst, const char ch);
 void concatnStr(Str* dst, const Str* src, const unsigned short length);
 
 //É¾³ý×Ö·û´®
-inline void deleteStr(Str* dst) {
-	free(dst->string);
-	dst->string = NULL;
-	dst->length = 0;
-}
+void deleteStr(Str* dst);
 

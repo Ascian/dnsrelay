@@ -144,14 +144,12 @@
     <ClCompile Include="DomainList.c" />
     <ClCompile Include="Message.c" />
     <ClCompile Include="Str.c" />
-    <ClCompile Include="TypeConversion.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Domain.h" />
     <ClInclude Include="DomainList.h" />
     <ClInclude Include="Message.h" />
     <ClInclude Include="Str.h" />
-    <ClInclude Include="TypeConversion.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

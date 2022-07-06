@@ -1,5 +1,11 @@
 #include"Str.h"
 
+void initStr(Str* str)
+{
+	str->length = 0;
+	str->string = NULL;
+}
+
 void setStr(Str* dst, const char* src, const unsigned short length) {
 	free(dst->string);
 	if (length != 0) {
@@ -12,6 +18,11 @@ void setStr(Str* dst, const char* src, const unsigned short length) {
 	dst->length = length;
 	for (int i = 0; i < length; i++)
 		dst->string[i] = src[i];
+}
+
+int strLength(const Str* str)
+{
+	return str->length;
 }
 
 void getSubstring(Str* dst, const Str* src, const unsigned short add, const unsigned short length) {
@@ -108,4 +119,11 @@ void concatnStr(Str* dst, const Str* src, const unsigned short length) {
 	for (int i = 0; i < length; i++)
 		dst->string[i + dst->length] = src->string[i];
 	dst->length = dst->length + length;
+}
+
+void deleteStr(Str* dst)
+{
+	free(dst->string);
+	dst->string = NULL;
+	dst->length = 0;
 }

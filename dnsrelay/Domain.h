@@ -20,8 +20,11 @@ void setDomainName(Domain* pDomain, const Str* pName);
 //复制域名
 void copyDomain(Domain* pDomain1, const Domain* pDomain2);
 
-//添加type类型记录
+//添加指定type类型记录
 void addRecord(Domain* pDomain, const Str* pRdata, const int type);
+
+//获取指定type类型化数量
+char getNumOf(const Domain* pDomain, const int type);
 
 //删除域名
 void deleteDomain(Domain* pDomain);

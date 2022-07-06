@@ -516,6 +516,7 @@ void loadDomainList(DomainList* pDomainList, const char* filePath, int debugLeve
 		//添加记录到domainList
 		setStr(&domainName, readBuf, strlen(readBuf));
 		deleteDomain(&domain);//删除上一条记录
+		initDomain(&domain);
 		setDomainName(&domain, &domainName);
 		domain.isStatic = 1;//设置为静态记录
 		if (id[0] == 0 && id[1] == 0 && id[2] == 0 && id[3] == 0) {

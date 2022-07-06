@@ -1,7 +1,26 @@
 #include "Message.h"
 
+//采用大端方式，将ch前两字节转换为short类型
+unsigned short byteToShort(const char* ch) {
+	return (unsigned short)((unsigned short)ch[1] + ((unsigned short)ch[0] << 8));
+}
+
+//采用大端方式，将short类型转换为ch前两字节
+void shortToByte(char* ch, const short sh) {
+	ch[0] = (char)(sh >> 8);
+	ch[1] = (char)sh;
+}
+
+//采用大端方式，将int类型转换为ch前两字节
+void intToByte(char* ch, const short sh) {
+	ch[0] = (char)(sh >> 24);
+	ch[1] = (char)(sh >> 16);
+	ch[2] = (char)(sh >> 8);
+	ch[3] = (char)sh;
+}
+
+//直接从套接字收到的message中add位置开始读取域名信息,若格式错误返回0，否则返回读取信息长度
 int getName(Str* pName, const Str* pMessage, const short add) {
-	//直接从套接字收到的message中add位置开始读取域名信息,若格式错误返回0，否则返回读取信息长度
 	deleteStr(pName);
 	int result;
 	int i;
@@ -37,8 +56,8 @@ int getName(Str* pName, const Str* pMessage, const short add) {
 	return result;
 }
 
+//将域名转换为可以植入报文的格式
 void changeNameFormat(Str* pName, const Str* pDomainName) {
-	//将域名转换为可以植入报文的格式
 	deleteStr(pName);
 	int temp = 0;
 	for (int i = 0; i < strLength(pDomainName); i++) {
@@ -52,6 +71,104 @@ void changeNameFormat(Str* pName, const Str* pDomainName) {
 		temp = 0;
 	}
 	appendStr(pName, 0);//加上'\0'标志结束
+}
+
+int isQuery(const Str* message)
+{
+	if (message->string[3] >> 7)
+		return 0;
+	return 1;
+}
+
+void setId(Str* pQuery, const short id)
+{
+	shortToByte(pQuery->string, id);
+}
+
+void setQr(Str* pQuery, const char qr)
+{
+	pQuery->string[2] |= qr << 7;
+}
+
+void setRcode(Str* pQuery, const char rcode)
+{
+	pQuery->string[3] |= rcode & 0x0F;
+}
+
+void setTc(Str* pQuery, const char rcode)
+{
+	pQuery->string[2] |= (rcode << 1) & 0x03;
+}
+
+void setAncount(Str* pQuery, const short ancount)
+{
+	shortToByte(pQuery->string + 6, ancount);
+}
+
+short getId(const Str* pMessage)
+{
+	return byteToShort(pMessage->string);
+}
+
+int getQr(const Str* pMessage)
+{
+	return (pMessage->string[2] & 0x80) >> 7;
+}
+
+int getOpcode(const Str* pMessage)
+{
+	return (pMessage->string[2] & 0x78) >> 3;
+}
+
+int getAa(const Str* pMessage)
+{
+	return (pMessage->string[2] & 0x78) >> 3;
+}
+
+int getTc(const Str* pMessage)
+{
+	return (pMessage->string[2] & 0x02) >> 1;
+}
+
+int getRd(const Str* pMessage)
+{
+	return pMessage->string[2] & 0x01;
+}
+
+int getRa(const Str* pMessage)
+{
+	return (pMessage->string[3] & 0x80) >> 7;
+}
+
+int getRcode(const Str* pMessage)
+{
+	return pMessage->string[3] & 0x0f;
+}
+
+short getQdcount(const Str* pMessage)
+{
+	return byteToShort(pMessage->string + 4);
+}
+
+short getAncount(const Str* pMessage)
+{
+	return byteToShort(pMessage->string + 6);
+}
+
+short getNscount(const Str* pMessage)
+{
+	return byteToShort(pMessage->string + 8);
+}
+
+short getArcount(const Str* pMessage)
+{
+	return byteToShort(pMessage->string + 10);
+}
+
+short getQnameAndType(Str* pName, const Str* pMessage)
+{
+	int nameLength = getName(pName, pMessage, 12);
+	return byteToShort(pMessage->string + 12 + nameLength);
 }
 
 void mergeAnswer(Str* pMessage, const Domain* pDomain, const short type) {
@@ -84,43 +201,43 @@ void mergeAnswer(Str* pMessage, const Domain* pDomain, const short type) {
 			intToByte(temp + 4, 10000);//TTL默认10000
 			shortToByte(temp + 8, (short)strLength(&pDomain->pRdata4A[i]));//RDLENGTH字段
 			setStr(&record, temp, 10);
-			concatStr(pMessage,& record);
+			concatStr(pMessage, &record);
 			concatStr(pMessage, &pDomain->pRdata4A[i]);//连接RDATA字段
 		}
 	}
 }
+
 int saveRdata(Domain* pDomain, const Str* pMessage) {
 	Str rdata;
 	Str name;
 	initStr(&rdata);
 	initStr(&name);
 	int type;
-	if ((type = getQnameAndType(&name, pMessage)) == 0) {//获取QTYPE和QNAME
+	int nameLength = getName(&name, pMessage, 12);//获取QNAME和长度
+	type = byteToShort(pMessage->string + 12 + nameLength);
+	if (nameLength == 0) {
 		deleteStr(&rdata);
 		deleteStr(&name);
 		return 0;
 	}
 
 	if (type == 1) {
-		//第一次查询A记录
-		if (pDomain->numA == -1)
+		if (pDomain->numA == -1)//第一次查询A记录
 			pDomain->numA = 0;
 	}
 	else if (type == 28) {
-		//第一次查询AAAA记录
-		if (pDomain->num4A == -1)
+		if (pDomain->num4A == -1)//第一次查询AAAA记录
 			pDomain->num4A = 0;
 	}
 	else//其余类型记录不保存
 		return 0;
 
 	setDomainName(pDomain, &name);
-	int nameLength = getName(&name, pMessage, 12);//获取QNAME长度
 	int add = 16 + nameLength;//第一个记录位置
 	int recordNum = getAncount(pMessage);
 
 	for (int i = 0; i < recordNum; i++) {
-		if ((nameLength = getName(&name, pMessage, add)) == 0) {//获取NAME字段长度
+		if ((nameLength = getName(&name, pMessage, add)) == 0) {//获取NAME字段和长度
 			deleteStr(&rdata);
 			deleteStr(&name);
 			return;
@@ -128,7 +245,7 @@ int saveRdata(Domain* pDomain, const Str* pMessage) {
 		short rdLength = byteToShort(pMessage->string + add + nameLength + 8);//RDATA字段长度
 		if (type == byteToShort(pMessage->string + add + nameLength)) {
 			//符合type类型的记录
-			getSubstring(&rdata, pMessage, add + nameLength + 10, rdLength );
+			getSubstring(&rdata, pMessage, add + nameLength + 10, rdLength);
 			addRecord(pDomain, &rdata, type);
 		}
 		add += nameLength + 10 + rdLength;//add修改为下一个记录位置

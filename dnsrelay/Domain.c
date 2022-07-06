@@ -81,6 +81,14 @@ void addRecord(Domain* pDomain, const Str* pRdata, const int type)
 	}
 }
 
+char getNumOf(const Domain* pDomain, const int type)
+{
+	if (type == 1)
+		return pDomain->numA;
+	else
+		return pDomain->num4A;
+}
+
 void deleteDomain(Domain* pDomain) {
 	deleteStr(&(pDomain->name));
 	for (int i = 0; i < pDomain->numA; i++)

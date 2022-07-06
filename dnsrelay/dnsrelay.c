@@ -9,7 +9,7 @@
 #pragma comment(lib,"Ws2_32.lib")
 #pragma comment(lib, "pthreadVC2.lib")
 
-#define VERSION 1.60
+#define VERSION 1.70
 #define MESSAGE_MAX_LENGTH 512  //报文最大长度
 #define MAX_PHREAD 100   //线程最大数量
 #define SLEEP_INTERVAL 100//周期性判断是否超时间隔
@@ -354,12 +354,12 @@ void* processQuery(void* arg) {
     char ip[20];
     inet_ntop(AF_INET, (void*)&pClient->clientAdd, ip, 16);
 
+    pthread_mutex_lock(&output);
+    outputRecvInfo(ip, ntohs(pClient->clientAdd.sin_port), &pClient->query);
+    pthread_mutex_unlock(&output);
+
     if ((type = getQnameAndType(&domainName, &pClient->query)) == 0) {
         //无法获得域名
-        pthread_mutex_lock(&output);
-        outputRecvInfo(ip, ntohs(pClient->clientAdd.sin_port), &pClient->query);
-        pthread_mutex_unlock(&output);
-
         setQr(&pClient->query, 1);//QR置1
         setRcode(&pClient->query, 1);//返回FOEMAT ERROR
 
@@ -383,123 +383,73 @@ void* processQuery(void* arg) {
     Domain* pDomain = findDomain(&domainList, &domainName);
     pthread_mutex_unlock(&modifyCache);
 
-    if (pDomain) {
+    if (pDomain && (pDomain->isAvailable == 0 || getNumOf(pDomain, type) != -1)) {
         //在本地库找到域名
         if (pDomain->isAvailable == 0) {
             //域名ip不允许访问
-
-            //输出调试信息
-            pthread_mutex_lock(&output);
-            outputRecvInfo(ip, ntohs(pClient->clientAdd.sin_port), &pClient->query);
             setQr(&pClient->query, 1);//QR置1
             setRcode(&pClient->query, 3);//返回NAME ERROR
-            outputSimpleInfo(ip, 1, &domainName, type);
-            outputSendInfo(ip, ntohs(pClient->clientAdd.sin_port), &pClient->query, -1, 0);
-            pthread_mutex_unlock(&output);
+        }
+        else {
+            //存在查询类型的缓存记录
+            mergeAnswer(&pClient->query, pDomain, type);//连接answer
+            setQr(&pClient->query, 1);//QR置1
+            setAncount(&pClient->query, (short)getNumOf(pDomain, type));//修改ANCOUNT
+            if (strLength(&pClient->query) > MESSAGE_MAX_LENGTH)//报文超长
+                setTc(&pClient->query, 1);//TC置1
+        }
 
-            int length = sendto(serverSocket, pClient->query.string, strLength(&pClient->query), 0, (SOCKADDR*)&pClient->clientAdd, sizeof(SOCKADDR_IN));
-            if (length == -1) {
-                pthread_mutex_lock(&output);
-                printf("sendto() Error #%d\n", GetLastError());
-                pthread_mutex_unlock(&output);
-            }
-            pClient->isOccupied = UNOCCUPIED;//解除client使用权限
+        pthread_mutex_lock(&output);
+        outputSimpleInfo(ip, pDomain->isStatic, &domainName, type);
+        outputSendInfo(ip, ntohs(pClient->clientAdd.sin_port), &pClient->query, -1, 0);
+        pthread_mutex_unlock(&output);
+
+        int length = sendto(serverSocket, pClient->query.string, strLength(&pClient->query), 0, (SOCKADDR*)&pClient->clientAdd, sizeof(SOCKADDR_IN));
+        if (length == -1) {
+            pthread_mutex_lock(&output);
+            printf("sendto() Error #%d\n", GetLastError());
+            pthread_mutex_unlock(&output);
+        }
+    }
+    else {
+        //在本地库未找到域名,发送给dns服务器
+        pClient->originId = getId(&pClient->query);//保存原始id
+        setId(&pClient->query, pClient->id);//修改为新id
+
+        pthread_mutex_lock(&output);
+        outputSimpleInfo(ip, 0, &domainName, type);
+        outputSendInfo(dnsIp, 53, &pClient->query, pClient->originId, 0);
+        pthread_mutex_unlock(&output);
+
+        int length = sendto(clientSocket, pClient->query.string, strLength(&pClient->query), 0, (SOCKADDR*)&dnsAdd, sizeof(SOCKADDR_IN));
+        if (length == -1) {
+            pthread_mutex_lock(&output);
+            printf("sendto() Error #%d\n", GetLastError());
+            pthread_mutex_unlock(&output);
+            pClient->isOccupied = UNOCCUPIED;
             deleteStr(&domainName);
             return NULL;
         }
-        if (type == 1) {
-            if (pDomain->numA != -1) {
-                //存在A类型查找记录
 
-                //输出调试信息
-                pthread_mutex_lock(&output);
-                outputRecvInfo(ip, ntohs(pClient->clientAdd.sin_port), &pClient->query);
-                mergeAnswer(&pClient->query, pDomain, 1);//连接answer
-                setQr(&pClient->query, 1);//QR置1
-                setAncount(&pClient->query, (short)pDomain->numA);//修改ANCOUNT
-                if (strLength(&pClient->query) > MESSAGE_MAX_LENGTH)//报文超长
-                    setTc(&pClient->query, 1);//TC置1
-                outputSimpleInfo(ip, pDomain->isStatic, &domainName, type);
-                outputSendInfo(ip, ntohs(pClient->clientAdd.sin_port), &pClient->query, -1, 1);
-                pthread_mutex_unlock(&output);
-
-                int length = sendto(serverSocket, pClient->query.string, strLength(&pClient->query), 0, (SOCKADDR*)&pClient->clientAdd, sizeof(SOCKADDR_IN));
-                if (length == -1) {
-                    pthread_mutex_lock(&output);
-                    printf("sendto() Error #%d\n", GetLastError());
-                    pthread_mutex_unlock(&output);
-                }
-                pClient->isOccupied = UNOCCUPIED;//解除client使用权限
-                deleteStr(&domainName);
-                return NULL;
-            }
-        }
-        else if (type == 28) {
-            if (pDomain->num4A != -1) {
-                //存在AAAA类型查找记录
-
-                //输出调试信息
-                pthread_mutex_lock(&output);
-                outputRecvInfo(ip, ntohs(pClient->clientAdd.sin_port), &pClient->query);
-                mergeAnswer(&pClient->query, pDomain, 28);//连接answer
-                setQr(&pClient->query, 1);//QR置1
-                setAncount(&pClient->query, pDomain->num4A);//修改ANCOUNT
-                if (strLength(&pClient->query) > MESSAGE_MAX_LENGTH)//报文超长
-                    setTc(&pClient->query, 1);//TC置1
-                outputSimpleInfo(ip, pDomain->isStatic, &domainName, type);
-                outputSendInfo(ip, ntohs(pClient->clientAdd.sin_port), &pClient->query, -1, 1);
-                pthread_mutex_unlock(&output);
-
-                int length = sendto(serverSocket, pClient->query.string, strLength(&pClient->query), 0, (SOCKADDR*)&pClient->clientAdd, sizeof(SOCKADDR_IN));
-                if (length == -1) {
-                    pthread_mutex_lock(&output);
-                    printf("sendto() Error #%d\n", GetLastError());
-                    pthread_mutex_unlock(&output);
-                }
-                pClient->isOccupied = UNOCCUPIED;//解除client使用权限
-                deleteStr(&domainName);
-                return NULL;
-            }
-        }
-    }
-    //在本地库未找到域名,发送给dns服务器
-
-    //输出调试信息
-    pthread_mutex_lock(&output);
-    outputRecvInfo(ip, ntohs(pClient->clientAdd.sin_port), &pClient->query);
-    pClient->originId = getId(&pClient->query);//保存原始id
-    setId(&pClient->query, pClient->id);//修改为新id
-    outputSimpleInfo(ip, 0, &domainName, type);
-    outputSendInfo(dnsIp, 53, &pClient->query, pClient->originId, 0);
-    pthread_mutex_unlock(&output);
-
-    int length = sendto(clientSocket, pClient->query.string, strLength(&pClient->query), 0, (SOCKADDR*)&dnsAdd, sizeof(SOCKADDR_IN));
-    if (length == -1) {
-        pthread_mutex_lock(&output);
-        printf("sendto() Error #%d\n", GetLastError());
-        pthread_mutex_unlock(&output);
-        pClient->isOccupied = UNOCCUPIED;
-        deleteStr(&domainName);
-        return NULL;
-    }
-
-    //通知处理服务器数据的进程
-    pthread_mutex_lock(&modifyMessageNum);
-    messageNum++;
-    pthread_cond_signal(&hasMessageToReceive);
-    pthread_mutex_unlock(&modifyMessageNum);
-
-    int i;
-    for (i = 0; i < OVERTIME && pClient->isOccupied == OCCUPIED; i += SLEEP_INTERVAL) {
-        //周期性判断是否超时
-        Sleep(SLEEP_INTERVAL);
-    }
-    if (i >= OVERTIME) {
+        //通知处理服务器数据的进程
         pthread_mutex_lock(&modifyMessageNum);
-        messageNum--;
+        messageNum++;
+        pthread_cond_signal(&hasMessageToReceive);
         pthread_mutex_unlock(&modifyMessageNum);
+
+        int i;
+        for (i = 0; i < OVERTIME && pClient->isOccupied == OCCUPIED; i += SLEEP_INTERVAL) {
+            //周期性判断是否超时
+            Sleep(SLEEP_INTERVAL);
+        }
+        if (i >= OVERTIME) {
+            pthread_mutex_lock(&modifyMessageNum);
+            messageNum--;
+            pthread_mutex_unlock(&modifyMessageNum);
+        }
     }
-    pClient->isOccupied = UNOCCUPIED;//服务器响应超时，直接解除client使用权限 
+    
+    pClient->isOccupied = UNOCCUPIED;//解除client线程使用权限 
     deleteStr(&domainName);
     return NULL;
 }

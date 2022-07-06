@@ -48,9 +48,6 @@
     <ClCompile Include="Str.c">
       <Filter>源文件\util</Filter>
     </ClCompile>
-    <ClCompile Include="TypeConversion.c">
-      <Filter>源文件\util</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Message.h">
@@ -63,9 +60,6 @@
       <Filter>头文件\domain</Filter>
     </ClInclude>
     <ClInclude Include="Str.h">
-      <Filter>头文件\util</Filter>
-    </ClInclude>
-    <ClInclude Include="TypeConversion.h">
       <Filter>头文件\util</Filter>
     </ClInclude>
   </ItemGroup>
