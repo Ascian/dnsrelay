@@ -183,6 +183,7 @@ CacheNode* deleteRBTree(RBTree* pT, RBTree parent, const Str* pKey) {
 			}
 			result = *pT;
 			*pT = (*pT)->rchild;
+			return result;//直接返回结果
 		}
 		else if (!(*pT)->rchild) {
 			//右子树为空，将左子树接到双亲上	
@@ -198,6 +199,7 @@ CacheNode* deleteRBTree(RBTree* pT, RBTree parent, const Str* pKey) {
 			}
 			result = *pT;
 			*pT = (*pT)->lchild;
+			return result;//直接返回结果
 		}
 		else {
 			//左右子树都存在，将左子树的的尽头右子树值赋给T
@@ -212,157 +214,26 @@ CacheNode* deleteRBTree(RBTree* pT, RBTree parent, const Str* pKey) {
 			char color = (*pT)->color;
 			(*pT)->color = temp->color;
 			temp->color = color;
+			CacheNode* tempLchild = temp->lchild;
 			if (tempParent != *pT) {
-				CacheNode* tempLchild = temp->lchild;
 				temp->lchild = (*pT)->lchild;
 				temp->rchild = (*pT)->rchild;
 				tempParent->rchild = *pT;
 				*pT = temp;
 				tempParent->rchild->lchild = tempLchild;
 				tempParent->rchild->rchild = NULL;
-				result = deleteRBTree(&((*pT)->lchild), *pT, &tempParent->rchild->key);//在左子树中递归调整平衡
 			}
 			else {
-				CacheNode* tempLchild = temp->lchild;
 				temp->rchild = (*pT)->rchild;
 				temp->lchild = *pT;
 				(*pT)->rchild = NULL;
 				(*pT)->lchild = tempLchild;
 				*pT = temp;
-				result = deleteRBTree(&((*pT)->lchild), *pT, &tempParent->key);//在左子树中递归调整平衡
 			}
-			if (shorter) {
-				//左孩子为双黑节点
-				if ((*pT)->rchild->color == BLACK) {
-					//右孩子为黑色
-					if ((*pT)->rchild->rchild != NULL && (*pT)->rchild->rchild->color == RED) {
-						//右孩子的右孩子为红色
-						(*pT)->rchild->rchild->color = BLACK;
-						(*pT)->rchild->color = (*pT)->color;
-						l_Rotate(pT);
-						(*pT)->lchild->color = BLACK;
-						shorter = 0;
-					}//if
-					else if ((*pT)->rchild->lchild != NULL && (*pT)->rchild->lchild->color == RED) {
-						//右孩子的左孩子为红色
-						(*pT)->rchild->lchild->color = (*pT)->color;
-						r_Rotate(&(*pT)->rchild);
-						l_Rotate(pT);
-						(*pT)->lchild->color = BLACK;
-						shorter = 0;
-					}//else if
-					else {
-						//兄弟节点的左右孩子都为黑色
-						if ((*pT)->color == RED) {
-							//*pT为红色
-							(*pT)->color = BLACK;
-							(*pT)->rchild->color = RED;
-							shorter = 0;
-						}
-						else {
-							//*pT为黑色
-							(*pT)->rchild->color = RED;
-						}
-					}//else
-				}//if
-				else {
-					//右孩子为红色
-					l_Rotate(pT);
-					(*pT)->color = BLACK;
-					(*pT)->lchild->color = RED;
-					RBTree* pLc = &(*pT)->lchild;
-					if ((*pLc)->rchild->rchild != NULL && (*pLc)->rchild->rchild->color == RED) {
-						//pLc右孩子的右孩子为红色
-						(*pLc)->rchild->rchild->color = BLACK;
-						(*pLc)->rchild->color = (*pLc)->color;
-						l_Rotate(pLc);
-						(*pLc)->lchild->color = BLACK;
-					}//if
-					else if ((*pLc)->rchild->lchild != NULL && (*pLc)->rchild->lchild->color == RED) {
-						//pLc右孩子的左孩子为红色
-						(*pLc)->rchild->lchild->color = (*pLc)->color;
-						r_Rotate(&(*pLc)->rchild);
-						l_Rotate(pLc);
-						(*pLc)->lchild->color = BLACK;
-					}//else if
-					else {
-						//pLc右孩子的左右孩子都为黑色
-						(*pLc)->color = BLACK;
-						(*pLc)->rchild->color = RED;
-					}//else
-					shorter = 0;
-				}//else
-			}//if
+			/*跳转至在左子树中寻找*/
 		}//else
 	}//else if
-	else if (compareStr(pKey, &(*pT)->key) < 0) {
-		//在左子树中寻找
-		result = deleteRBTree(&((*pT)->lchild), *pT, pKey);
-		if (!result)  return NULL;
-		if (shorter) {
-			//左孩子为双黑节点
-			if ((*pT)->rchild->color == BLACK) {
-				//右孩子为黑色
-				if ((*pT)->rchild->rchild != NULL && (*pT)->rchild->rchild->color == RED) {
-					//右孩子的右孩子为红色
-					(*pT)->rchild->rchild->color = BLACK;
-					(*pT)->rchild->color = (*pT)->color;
-					l_Rotate(pT);
-					(*pT)->lchild->color = BLACK;
-					shorter = 0;
-				}//if
-				else if ((*pT)->rchild->lchild != NULL && (*pT)->rchild->lchild->color == RED) {
-					//右孩子的左孩子为红色
-					(*pT)->rchild->lchild->color = (*pT)->color;
-					r_Rotate(&(*pT)->rchild);
-					l_Rotate(pT);
-					(*pT)->lchild->color = BLACK;
-					shorter = 0;
-				}//else if
-				else {
-					//兄弟节点的左右孩子都为黑色
-					if ((*pT)->color == RED) {
-						//*pT为红色
-						(*pT)->color = BLACK;
-						(*pT)->rchild->color = RED;
-						shorter = 0;
-					}
-					else {
-						//*pT为黑色
-						(*pT)->rchild->color = RED;
-					}
-				}//else
-			}//if
-			else {
-				//右孩子为红色
-				l_Rotate(pT);
-				(*pT)->color = BLACK;
-				(*pT)->lchild->color = RED;
-				RBTree* pLc = &(*pT)->lchild;
-				if ((*pLc)->rchild->rchild != NULL && (*pLc)->rchild->rchild->color == RED) {
-					//pLc右孩子的右孩子为红色
-					(*pLc)->rchild->rchild->color = BLACK;
-					(*pLc)->rchild->color = (*pLc)->color;
-					l_Rotate(pLc);
-					(*pLc)->lchild->color = BLACK;
-				}//if
-				else if ((*pLc)->rchild->lchild != NULL && (*pLc)->rchild->lchild->color == RED) {
-					//pLc右孩子的左孩子为红色
-					(*pLc)->rchild->lchild->color = (*pLc)->color;
-					r_Rotate(&(*pLc)->rchild);
-					l_Rotate(pLc);
-					(*pLc)->lchild->color = BLACK;
-				}//else if
-				else {
-					//pLc右孩子的左右孩子都为黑色
-					(*pLc)->color = BLACK;
-					(*pLc)->rchild->color = RED;
-				}//else
-				shorter = 0;
-			}//else
-		}//if
-	}//else if
-	else {
+	else if (compareStr(pKey, &(*pT)->key) > 0) {
 		//在右子中寻找
 		result = deleteRBTree(&((*pT)->rchild), *pT, pKey);
 		if (!result)  return NULL;
@@ -428,7 +299,75 @@ CacheNode* deleteRBTree(RBTree* pT, RBTree parent, const Str* pKey) {
 				shorter = 0;
 			}//else
 		}//if
-	}//else
+		return result;//直接返回结果
+	}//else if
+
+	//在左子树中寻找
+	result = deleteRBTree(&((*pT)->lchild), *pT, pKey);
+	if (!result)  return NULL;
+	if (shorter) {
+		//左孩子为双黑节点
+		if ((*pT)->rchild->color == BLACK) {
+			//右孩子为黑色
+			if ((*pT)->rchild->rchild != NULL && (*pT)->rchild->rchild->color == RED) {
+				//右孩子的右孩子为红色
+				(*pT)->rchild->rchild->color = BLACK;
+				(*pT)->rchild->color = (*pT)->color;
+				l_Rotate(pT);
+				(*pT)->lchild->color = BLACK;
+				shorter = 0;
+			}//if
+			else if ((*pT)->rchild->lchild != NULL && (*pT)->rchild->lchild->color == RED) {
+				//右孩子的左孩子为红色
+				(*pT)->rchild->lchild->color = (*pT)->color;
+				r_Rotate(&(*pT)->rchild);
+				l_Rotate(pT);
+				(*pT)->lchild->color = BLACK;
+				shorter = 0;
+			}//else if
+			else {
+				//兄弟节点的左右孩子都为黑色
+				if ((*pT)->color == RED) {
+					//*pT为红色
+					(*pT)->color = BLACK;
+					(*pT)->rchild->color = RED;
+					shorter = 0;
+				}
+				else {
+					//*pT为黑色
+					(*pT)->rchild->color = RED;
+				}
+			}//else
+		}//if
+		else {
+			//右孩子为红色
+			l_Rotate(pT);
+			(*pT)->color = BLACK;
+			(*pT)->lchild->color = RED;
+			RBTree* pLc = &(*pT)->lchild;
+			if ((*pLc)->rchild->rchild != NULL && (*pLc)->rchild->rchild->color == RED) {
+				//pLc右孩子的右孩子为红色
+				(*pLc)->rchild->rchild->color = BLACK;
+				(*pLc)->rchild->color = (*pLc)->color;
+				l_Rotate(pLc);
+				(*pLc)->lchild->color = BLACK;
+			}//if
+			else if ((*pLc)->rchild->lchild != NULL && (*pLc)->rchild->lchild->color == RED) {
+				//pLc右孩子的左孩子为红色
+				(*pLc)->rchild->lchild->color = (*pLc)->color;
+				r_Rotate(&(*pLc)->rchild);
+				l_Rotate(pLc);
+				(*pLc)->lchild->color = BLACK;
+			}//else if
+			else {
+				//pLc右孩子的左右孩子都为黑色
+				(*pLc)->color = BLACK;
+				(*pLc)->rchild->color = RED;
+			}//else
+			shorter = 0;
+		}//else
+	}//if
+	
 	return result;
 }
 
