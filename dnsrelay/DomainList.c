@@ -367,7 +367,7 @@ CacheNode* deleteRBTree(RBTree* pT, RBTree parent, const Str* pKey) {
 			shorter = 0;
 		}//else
 	}//if
-	
+
 	return result;
 }
 
@@ -411,7 +411,7 @@ void initDomainList(DomainList* pDomainList, const int capacity)
 }
 
 
-void loadDomainList(DomainList* pDomainList, const char* filePath, int debugLevel) {
+void loadDomainList(DomainList* pDomainList, const char* filePath, const int debugLevel) {
 	printf("Try to load table \"%s\"", filePath);
 	FILE* file = fopen(filePath, "r");
 	if (file == NULL) {

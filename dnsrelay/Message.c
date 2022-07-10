@@ -73,13 +73,6 @@ void changeNameFormat(Str* pName, const Str* pDomainName) {
 	appendStr(pName, 0);//加上'\0'标志结束
 }
 
-int isQuery(const Str* message)
-{
-	if (message->string[3] >> 7)
-		return 0;
-	return 1;
-}
-
 void setId(Str* pQuery, const short id)
 {
 	shortToByte(pQuery->string, id);
@@ -95,9 +88,9 @@ void setRcode(Str* pQuery, const char rcode)
 	pQuery->string[3] |= rcode & 0x0F;
 }
 
-void setTc(Str* pQuery, const char rcode)
+void setTc(Str* pQuery, const char tc)
 {
-	pQuery->string[2] |= (rcode << 1) & 0x03;
+	pQuery->string[2] |= (tc << 1) & 0x03;
 }
 
 void setAncount(Str* pQuery, const short ancount)

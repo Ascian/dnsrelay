@@ -14,7 +14,7 @@ typedef struct LRUCacheNode {
 	struct LRUCacheNode* rchild;
 	struct LRUCacheNode* next;
 	struct LRUCacheNode* pre;
-}CacheNode, *RBTree;
+}CacheNode, * RBTree;
 
 typedef struct DomainList {
 	struct LRUCacheNode* root;//红黑树根节点，存储动态表和静态表，提供快速查询
@@ -27,7 +27,7 @@ typedef struct DomainList {
 //初始化域名列表
 void initDomainList(DomainList* pDomainList, const int capacity);
 
-//添加域名,加入成功返回1,否则返回0
+//添加域名结构体,加入成功返回1,否则返回0
 int addDomain(DomainList* pDomainList, const Domain* pDomain);
 
 //释放域名表
@@ -36,8 +36,8 @@ void deleteDomainList(DomainList* pDomainList);
 //刷新域名表中动态记录
 void refreshDomianList(DomainList* pDomainList);
 
-//在domainList中找到关键字为pKey的域名，若找到返回域指针，否则返回NULL
+//查找关键字为pKey的域名结构体，若找到返回域指针，否则返回NULL
 Domain* findDomain(DomainList* pDomainList, const Str* pKey);
 
 //从文件中读取域名数据，根据debugLevel选择输出内容
-void loadDomainList(DomainList* pDomainList, const char* fileAddress, int debugLevel);
+void loadDomainList(DomainList* pDomainList, const char* fileAddress, const int debugLevel);

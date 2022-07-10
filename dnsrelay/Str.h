@@ -19,7 +19,7 @@ int strLength(const Str* str);
 void getSubstring(Str* dst, const Str* src, const unsigned short add, const unsigned short length);
 
 //复制字符串
-void copyStr(Str* dst, const Str *src);
+void copyStr(Str* dst, const Str* src);
 
 //复制指定长度字符串
 void copynStr(Str* dst, const Str* src, const unsigned short length);

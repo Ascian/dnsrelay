@@ -9,50 +9,49 @@
 #pragma comment(lib,"Ws2_32.lib")
 #pragma comment(lib, "pthreadVC2.lib")
 
-#define VERSION 1.70
+#define VERSION 1.70//程序版本号
 #define MESSAGE_MAX_LENGTH 512  //报文最大长度
-#define MAX_PHREAD 100   //线程最大数量
+#define MAX_PTHREAD 100   //线程最大数量
 #define SLEEP_INTERVAL 100//周期性判断是否超时间隔
 #define OVERTIME 3000 //超时应答时间
-#define CACHE_CAPACITY 100//动态cache容量
-#define REFRESH_TIME 3600000//刷新cache间隔
-#define OCCUPIED 1
-#define UNOCCUPIED 0
+#define CACHE_CAPACITY 1000//动态cache容量
+#define REFRESH_TIME 3600000000//刷新cache间隔
+#define OCCUPIED 1//线程结构体被占用
+#define UNOCCUPIED 0//线程结构体未被占用
 
-typedef struct Server {
+//与主机DNS通信线程结构体
+struct Server {
     int isOccupied;//判断是否被占用
     Str response;//接受的数据
     pthread_t tid;// 线程ID
-}Server;
+};
 
-typedef struct Client {
+//与客户端通信线程结构体
+struct Client {
     short id;//clientID，用于标识不同客户
     short originId;//query原id
     int isOccupied;//判断是否被占用
     Str query;//接受的数据
     pthread_t tid;// 线程ID
     SOCKADDR_IN clientAdd;// 地址信息
-}Client;
+};
 
-struct Client clients[MAX_PHREAD / 2];
-struct Server servers[MAX_PHREAD / 2];
-DomainList domainList = { NULL,0 };
-SOCKET serverSocket;
-SOCKET clientSocket;
-SOCKADDR_IN dnsAdd;
-SOCKADDR_IN localAdd;
-pthread_cond_t hasMessageToReceive;
-pthread_mutex_t output;
-pthread_mutex_t modifyTotalQueryNum;
-pthread_mutex_t modifyCache;
-pthread_mutex_t modifyMessageNum;
+struct Client clients[MAX_PTHREAD / 2];//与客户端通信线程
+struct Server servers[MAX_PTHREAD / 2];//与主机DNS服务器通信线程
+DomainList domainList = { NULL,0 };//域名-IP表
+SOCKET clientSocket;//与客户端通信socket
+SOCKET serverSocket;//与主机DNS服务器通信socket
+SOCKADDR_IN dnsAdd;//主机DNS地址信息
+SOCKADDR_IN localAdd;//本地DNS地址信息
+pthread_mutex_t output;//输出线程锁
+pthread_mutex_t modifyTotalQueryNum;//修改queryNum线程锁
+pthread_mutex_t modifyCache;//修改域名-IP表缓存线程锁
 
-int debugLevel = 2;
-char* dnsIp = "218.85.157.99";
-char* staticDataPath = ".//dnsrelay.txt";
-int len = sizeof(SOCKADDR);
-int queryNum = 0;
-int messageNum = 0;
+int debugLevel = 1;//debug等级
+char* dnsIp = "218.85.157.99"; //主机DNS的IP地址
+char* staticDataPath = ".//dnsrelay.txt";//静态数据文件地址
+int queryNum = 0;//总接受请求数量
+char allowToReceive = 0;//允许接受DNS服务器数据
 
 void initDnsrelay(int argc, char* argv[]);//处理命令行参数
 void initSocket();//初始化SOCKET
@@ -82,14 +81,14 @@ int main(int argc, char* argv[])
 
     //clients初始化
     int i = 0;
-    for (i = 0; i < MAX_PHREAD / 2; ++i) {
+    for (i = 0; i < MAX_PTHREAD / 2; ++i) {
         clients[i].isOccupied = UNOCCUPIED;
         clients[i].id = i;
         initStr(&clients[i].query);
     }
 
     //servers初始化
-    for (i = 0; i < MAX_PHREAD / 2; ++i) {
+    for (i = 0; i < MAX_PTHREAD / 2; ++i) {
         servers[i].isOccupied = UNOCCUPIED;
         initStr(&servers[i].response);
     }
@@ -97,9 +96,7 @@ int main(int argc, char* argv[])
     pthread_t refreshCache;
     pthread_t client;
     pthread_t server;
-    pthread_cond_init(&hasMessageToReceive, NULL);
     pthread_mutex_init(&modifyCache, NULL);
-    pthread_mutex_init(&modifyMessageNum, NULL);
     pthread_mutex_init(&modifyTotalQueryNum, NULL);
     pthread_mutex_init(&output, NULL);
 
@@ -111,15 +108,15 @@ int main(int argc, char* argv[])
     pthread_join(client, NULL);
     pthread_join(server, NULL);
 
-    for (i = 0; i < MAX_PHREAD / 2; ++i)
+    for (i = 0; i < MAX_PTHREAD / 2; ++i)
         deleteStr(&clients[i].query);
 
-    for (i = 0; i < MAX_PHREAD / 2; ++i)
+    for (i = 0; i < MAX_PTHREAD / 2; ++i)
         deleteStr(&servers[i].response);
 
     deleteDomainList(&domainList);
-    shutdown(serverSocket, 2);
     shutdown(clientSocket, 2);
+    shutdown(serverSocket, 2);
     WSACleanup();
     return 0;
 }
@@ -179,26 +176,25 @@ void initSocket() {
     }
 
     // 绑定本地信息
-    serverSocket = socket(AF_INET, SOCK_DGRAM, 0);
+    clientSocket = socket(AF_INET, SOCK_DGRAM, 0);
     memset(&localAdd, 0, sizeof(SOCKADDR_IN));
     localAdd.sin_addr.S_un.S_addr = inet_addr("127.0.0.1");
     localAdd.sin_family = AF_INET;
     localAdd.sin_port = htons(53);
-    if (bind(serverSocket, (SOCKADDR*)&localAdd, sizeof(SOCKADDR)) != 0) {
+    if (bind(clientSocket, (SOCKADDR*)&localAdd, sizeof(SOCKADDR)) != 0) {
         printf("...bind failed");
         exit(-1);
     }
     printf("...OK\n");
 
     //dns服务器信息
-    clientSocket = socket(AF_INET, SOCK_DGRAM, 0);
+    serverSocket = socket(AF_INET, SOCK_DGRAM, 0);
     memset(&dnsAdd, 0, sizeof(SOCKADDR_IN));
     dnsAdd.sin_addr.S_un.S_addr = inet_addr(dnsIp);
     dnsAdd.sin_family = AF_INET;
     dnsAdd.sin_port = htons(53);
 
 }
-
 
 //刷新动态记录
 void* cacheRefresh(void* arg)
@@ -222,17 +218,18 @@ void* recvFromClient(void* arg)
     while (1) {
         char string[MESSAGE_MAX_LENGTH];
         struct sockaddr_in sockaddr;
-        int length = recvfrom(serverSocket, string, MESSAGE_MAX_LENGTH, 0, (SOCKADDR*)&sockaddr, &len);
+        int len = sizeof(SOCKADDR);
+        int length = recvfrom(clientSocket, string, MESSAGE_MAX_LENGTH, 0, (SOCKADDR*)&sockaddr, &len);
         if (length > 16) {
             //等待可使用Client的线程
             struct Client* pClient = NULL;
-            for (int i = 0; i < MAX_PHREAD / 2; i++) {
+            for (int i = 0; i < MAX_PTHREAD / 2; i++) {
                 if (clients[i].isOccupied == UNOCCUPIED) {
                     clients[i].isOccupied = OCCUPIED;
                     pClient = &clients[i];
                     break;
                 }
-                if (i == MAX_PHREAD / 2 - 1) {
+                if (i == MAX_PTHREAD / 2 - 1) {
                     Sleep(1);
                     i = 0;
                 }
@@ -257,29 +254,24 @@ void* recvFromClient(void* arg)
 void* recvFromServer(void* arg)
 {
     while (1) {
-        //等待hasMessageToReceive信号
-        pthread_mutex_lock(&modifyMessageNum);
-        while (messageNum == 0)
-            pthread_cond_wait(&hasMessageToReceive, &modifyMessageNum);//等待接受数据请求
-        pthread_mutex_unlock(&modifyMessageNum);
-
         char string[MESSAGE_MAX_LENGTH];
         struct sockaddr_in sockaddr;
-        int length = recvfrom(clientSocket, string, MESSAGE_MAX_LENGTH, 0, (SOCKADDR*)&sockaddr, &len);
+        while (!allowToReceive) {
+            Sleep(1);
+        }
+        int len = sizeof(SOCKADDR);
+        int length = recvfrom(serverSocket, string, MESSAGE_MAX_LENGTH, 0, (SOCKADDR*)&sockaddr, &len);
         if (length > 16) {
-            pthread_mutex_lock(&modifyMessageNum);
-            messageNum--;
-            pthread_mutex_unlock(&modifyMessageNum);
 
             //等待可使用的Server线程
             struct Server* pServer = NULL;
-            for (int i = 0; i < MAX_PHREAD / 2; i++) {
+            for (int i = 0; i < MAX_PTHREAD / 2; i++) {
                 if (servers[i].isOccupied == UNOCCUPIED) {
                     servers[i].isOccupied = OCCUPIED;
                     pServer = &servers[i];
                     break;
                 }
-                if (i == MAX_PHREAD / 2 - 1) {
+                if (i == MAX_PTHREAD / 2 - 1) {
                     Sleep(1);
                     i = 0;
                 }
@@ -315,7 +307,7 @@ void* processResponse(void* arg) {
     outputSendInfo(ip, ntohs(clients[id].clientAdd.sin_port), &pServer->response, id, 0);
     pthread_mutex_unlock(&output);
 
-    int length = sendto(serverSocket, pServer->response.string, strLength(&pServer->response), 0, (SOCKADDR*)&clients[id].clientAdd, sizeof(SOCKADDR_IN));
+    int length = sendto(clientSocket, pServer->response.string, strLength(&pServer->response), 0, (SOCKADDR*)&clients[id].clientAdd, sizeof(SOCKADDR_IN));
     if (length == -1) {
         pthread_mutex_lock(&output);
         printf("sendto() Error #%d\n", GetLastError());
@@ -367,7 +359,7 @@ void* processQuery(void* arg) {
         outputSendInfo(ip, ntohs(pClient->clientAdd.sin_port), &pClient->query, -1, 0);
         pthread_mutex_unlock(&output);
 
-        int length = sendto(serverSocket, pClient->query.string, strLength(&pClient->query), 0, (SOCKADDR*)&pClient->clientAdd, sizeof(SOCKADDR_IN));
+        int length = sendto(clientSocket, pClient->query.string, strLength(&pClient->query), 0, (SOCKADDR*)&pClient->clientAdd, sizeof(SOCKADDR_IN));
         if (length == -1) {
             pthread_mutex_lock(&output);
             printf("sendto() Error #%d\n", GetLastError());
@@ -404,7 +396,7 @@ void* processQuery(void* arg) {
         outputSendInfo(ip, ntohs(pClient->clientAdd.sin_port), &pClient->query, -1, 0);
         pthread_mutex_unlock(&output);
 
-        int length = sendto(serverSocket, pClient->query.string, strLength(&pClient->query), 0, (SOCKADDR*)&pClient->clientAdd, sizeof(SOCKADDR_IN));
+        int length = sendto(clientSocket, pClient->query.string, strLength(&pClient->query), 0, (SOCKADDR*)&pClient->clientAdd, sizeof(SOCKADDR_IN));
         if (length == -1) {
             pthread_mutex_lock(&output);
             printf("sendto() Error #%d\n", GetLastError());
@@ -421,7 +413,7 @@ void* processQuery(void* arg) {
         outputSendInfo(dnsIp, 53, &pClient->query, pClient->originId, 0);
         pthread_mutex_unlock(&output);
 
-        int length = sendto(clientSocket, pClient->query.string, strLength(&pClient->query), 0, (SOCKADDR*)&dnsAdd, sizeof(SOCKADDR_IN));
+        int length = sendto(serverSocket, pClient->query.string, strLength(&pClient->query), 0, (SOCKADDR*)&dnsAdd, sizeof(SOCKADDR_IN));
         if (length == -1) {
             pthread_mutex_lock(&output);
             printf("sendto() Error #%d\n", GetLastError());
@@ -431,24 +423,14 @@ void* processQuery(void* arg) {
             return NULL;
         }
 
-        //通知处理服务器数据的进程
-        pthread_mutex_lock(&modifyMessageNum);
-        messageNum++;
-        pthread_cond_signal(&hasMessageToReceive);
-        pthread_mutex_unlock(&modifyMessageNum);
-
+        allowToReceive = 1;
         int i;
         for (i = 0; i < OVERTIME && pClient->isOccupied == OCCUPIED; i += SLEEP_INTERVAL) {
             //周期性判断是否超时
             Sleep(SLEEP_INTERVAL);
         }
-        if (i >= OVERTIME) {
-            pthread_mutex_lock(&modifyMessageNum);
-            messageNum--;
-            pthread_mutex_unlock(&modifyMessageNum);
-        }
     }
-    
+
     pClient->isOccupied = UNOCCUPIED;//解除client线程使用权限 
     deleteStr(&domainName);
     return NULL;

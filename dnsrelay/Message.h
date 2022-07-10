@@ -5,9 +5,6 @@
 #include<stdlib.h>
 
 
-//判断从套接字收到的报文是否为query
-int isQuery(const Str* message);
-
 //修改ID字段
 void setId(Str* pQuery, const short id);
 
@@ -18,7 +15,7 @@ void setQr(Str* pQuery, const char qr);
 void setRcode(Str* pQuery, const char rcode);
 
 //修改TC字段
-void setTc(Str* pQuery, const char rcode);
+void setTc(Str* pQuery, const char tc);
 
 //修改ANCOUNT字段
 void setAncount(Str* pQuery, const short ancount);
